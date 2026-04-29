@@ -63,6 +63,7 @@ app.post("/api/chat", async (req, res) => {
       conversation_id: convId,
       answer: result.answer,
       sources: result.sources,
+      queries: result.queries,
       model: result.model,
     });
   } catch (e) {
