@@ -3,6 +3,12 @@ import cors from "cors";
 import { v4 as uuid } from "uuid";
 import { getDb } from "./db.js";
 import { ragAnswer } from "./rag.js";
+import {
+  startJourney,
+  recordAnswer,
+  getJourney,
+  listJourneys,
+} from "./journey.js";
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -208,6 +214,49 @@ function safeJson(s, fallback) {
     return fallback;
   }
 }
+
+// ---------- JOURNEY ----------
+app.post("/api/journey/start", async (req, res) => {
+  try {
+    const { user_id } = req.body || {};
+    const result = await startJourney(db, user_id);
+    res.json(result);
+  } catch (e) {
+    console.error("journey start:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/journey/:id/answer", async (req, res) => {
+  try {
+    const { question_id, choice } = req.body || {};
+    if (!question_id || !choice) {
+      return res
+        .status(400)
+        .json({ error: "question_id and choice are required" });
+    }
+    const result = await recordAnswer(db, req.params.id, {
+      question_id,
+      choice,
+    });
+    res.json(result);
+  } catch (e) {
+    console.error("journey answer:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/journey/:id", (req, res) => {
+  const journey = getJourney(db, req.params.id);
+  if (!journey) return res.status(404).json({ error: "Journey not found" });
+  res.json(journey);
+});
+
+app.get("/api/journeys", (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: "user_id is required" });
+  res.json({ journeys: listJourneys(db, user_id) });
+});
 
 app.listen(PORT, () => {
   console.log(`\n🎓 Ask Lville API listening on http://localhost:${PORT}\n`);

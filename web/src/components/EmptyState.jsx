@@ -5,7 +5,7 @@ import {
   quickStartQuestions,
 } from "../data/lvilleData.js";
 
-export default function EmptyState({ onPickQuestion, userName }) {
+export default function EmptyState({ onPickQuestion, onOpenJourney, userName }) {
   const greeting = useMemo(
     () => greetings[Math.floor(Math.random() * greetings.length)],
     []
@@ -23,6 +23,23 @@ export default function EmptyState({ onPickQuestion, userName }) {
           </h1>
           <p className="text-stone-500">{greeting}</p>
         </div>
+
+        {onOpenJourney && (
+          <button
+            onClick={onOpenJourney}
+            className="w-full mb-8 group bg-gradient-to-r from-lville-red to-red-700 text-white rounded-xl p-5 text-left shadow-md hover:shadow-lg transition flex items-center gap-4"
+          >
+            <div className="text-4xl">🗺️</div>
+            <div className="flex-1">
+              <div className="font-bold text-lg">Build my Course Journey</div>
+              <div className="text-sm text-white/85 mt-0.5">
+                Answer 10 quick questions and get a personalized Form-by-Form
+                course plan, visualized as a graph.
+              </div>
+            </div>
+            <div className="text-white/70 group-hover:translate-x-1 transition">→</div>
+          </button>
+        )}
 
         <div className="mb-10">
           <div className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-3 text-center">

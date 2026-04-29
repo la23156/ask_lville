@@ -1,4 +1,4 @@
-import { Plus, Search, MessageSquare, Trash2, Pencil, X, User } from "lucide-react";
+import { Plus, Search, MessageSquare, Trash2, Pencil, X, User, Map } from "lucide-react";
 import { useState } from "react";
 
 export default function Sidebar({
@@ -10,6 +10,7 @@ export default function Sidebar({
   onDelete,
   onSearch,
   onOpenProfile,
+  onOpenJourney,
   user,
   collapsed,
   onToggle,
@@ -43,12 +44,18 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 space-y-2">
         <button
           onClick={onNew}
           className="w-full flex items-center justify-center gap-2 bg-lville-red hover:bg-red-700 text-white py-2 rounded font-medium"
         >
           <Plus className="w-4 h-4" /> New chat
+        </button>
+        <button
+          onClick={onOpenJourney}
+          className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-stone-100 py-2 rounded font-medium text-sm"
+        >
+          <Map className="w-4 h-4" /> Build my journey
         </button>
       </div>
 

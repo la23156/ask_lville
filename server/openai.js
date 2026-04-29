@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY missing from .env");
 }
+// EXA_API_KEY is optional — Exa enrichment becomes a no-op if absent.
 
 export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

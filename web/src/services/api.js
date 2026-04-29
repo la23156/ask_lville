@@ -38,4 +38,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(profile),
     }),
+  startJourney: (userId) =>
+    request("/api/journey/start", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    }),
+  answerJourney: (id, question_id, choice) =>
+    request(`/api/journey/${id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id, choice }),
+    }),
+  getJourney: (id) => request(`/api/journey/${id}`),
+  listJourneys: (userId) =>
+    request(`/api/journeys?user_id=${encodeURIComponent(userId)}`),
 };
