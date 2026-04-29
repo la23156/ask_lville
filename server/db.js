@@ -20,8 +20,22 @@ export function getDb() {
   sqliteVec.load(db);
   migrate(db);
   seedQuestions(db);
+  cleanupEmptyJourneys(db);
   _db = db;
   return db;
+}
+
+function cleanupEmptyJourneys(db) {
+  // Drop in-progress journeys that never received an answer. These accumulate
+  // when the user opens the wizard without finishing.
+  const info = db
+    .prepare(
+      "DELETE FROM journeys WHERE status = 'in_progress' AND (answers IS NULL OR answers = '[]' OR LENGTH(TRIM(answers)) <= 2)"
+    )
+    .run();
+  if (info.changes > 0) {
+    console.log(`[startup] cleaned up ${info.changes} empty in-progress journeys`);
+  }
 }
 
 function migrate(db) {

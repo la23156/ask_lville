@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import JourneyWizard from "./JourneyWizard.jsx";
 import JourneyResult from "./JourneyResult.jsx";
 import { api } from "../services/api.js";
-import { ArrowLeft, MapIcon } from "lucide-react";
+import { ArrowLeft, MapIcon, Trash2 } from "lucide-react";
 
 export default function JourneyPage() {
   const { user } = useAuth();
@@ -69,26 +69,56 @@ export default function JourneyPage() {
             </div>
           )}
           {pastJourneys.map((j) => (
-            <button
+            <div
               key={j.id}
-              onClick={() => {
-                setActiveId(j.id);
-                setPhase("result");
-                navigate(`/journey/${j.id}`);
-              }}
-              className={`w-full text-left px-3 py-2 rounded text-sm mb-1 ${
-                activeId === j.id
-                  ? "bg-white/10"
-                  : "hover:bg-white/5 text-stone-300"
+              className={`group rounded mb-1 ${
+                activeId === j.id ? "bg-white/10" : "hover:bg-white/5"
               }`}
             >
-              <div className="truncate text-stone-100">
-                {j.title || "Untitled"}
+              <div className="flex items-stretch">
+                <button
+                  onClick={() => {
+                    if (j.status !== "complete") return; // can't open in-progress
+                    setActiveId(j.id);
+                    setPhase("result");
+                    navigate(`/journey/${j.id}`);
+                  }}
+                  disabled={j.status !== "complete"}
+                  className={`flex-1 text-left px-3 py-2 text-sm min-w-0 ${
+                    j.status === "complete"
+                      ? "cursor-pointer"
+                      : "cursor-default opacity-70"
+                  }`}
+                >
+                  <div className="truncate text-stone-100">
+                    {j.title || "Untitled"}
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">
+                    {j.status === "complete" ? "✓ complete" : "in progress"}
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!confirm("Delete this journey?")) return;
+                    api.deleteJourney(j.id).then(() => {
+                      if (activeId === j.id) {
+                        setActiveId(null);
+                        setPhase("wizard");
+                        navigate("/journey", { replace: true });
+                      }
+                      api
+                        .listJourneys(user.id)
+                        .then((r) => setPastJourneys(r.journeys || []));
+                    });
+                  }}
+                  className="opacity-0 group-hover:opacity-100 px-2 text-stone-400 hover:text-red-400 transition"
+                  title="Delete journey"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div className="text-[10px] text-stone-500 mt-0.5">
-                {j.status === "complete" ? "✓ complete" : "in progress"}
-              </div>
-            </button>
+            </div>
           ))}
         </div>
       </aside>

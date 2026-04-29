@@ -36,9 +36,17 @@ export default function JourneyWizard({ user, onComplete }) {
     try {
       const willFinish = progress.answered + 1 >= progress.total;
       if (willFinish) setGenerating(true);
-      const res = await api.answerJourney(journeyId, question.id, selected);
+      const res = await api.answerJourney(
+        journeyId,
+        question.id,
+        selected,
+        user.id
+      );
+      // First answer creates the journey row server-side; capture the id.
+      const newId = res.journey_id || journeyId;
+      setJourneyId(newId);
       if (res.done) {
-        onComplete?.(journeyId);
+        onComplete?.(newId);
       } else {
         setQuestion(res.question);
         setProgress(res.progress);

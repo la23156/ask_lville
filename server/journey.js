@@ -731,14 +731,17 @@ async function exaEnrich(answers, plan) {
 
 // ---------- Public API: orchestration ----------
 export async function startJourney(db, userId) {
-  const id = (await import("crypto")).randomUUID();
-  db.prepare(
-    "INSERT INTO journeys (id, user_id, status, answers) VALUES (?, ?, 'in_progress', '[]')"
-  ).run(id, userId || null);
-
-  const journey = db.prepare("SELECT * FROM journeys WHERE id = ?").get(id);
-  const decision = await selectNextQuestion(db, journey);
-  return { journey_id: id, question: pickedQuestionFor(db, decision), progress: { answered: 0, total: TARGET_QUESTIONS } };
+  // Don't insert into journeys yet — wait until the first answer comes in,
+  // so a user opening the wizard without completing it doesn't leave an empty
+  // row in the sidebar.
+  const ephemeral = { answers: "[]", user_id: userId };
+  const decision = await selectNextQuestion(db, ephemeral);
+  return {
+    journey_id: null,
+    user_id: userId,
+    question: pickedQuestionFor(db, decision),
+    progress: { answered: 0, total: TARGET_QUESTIONS },
+  };
 }
 
 function pickedQuestionFor(db, decision) {
@@ -749,9 +752,19 @@ function pickedQuestionFor(db, decision) {
   return null;
 }
 
-export async function recordAnswer(db, journeyId, { question_id, choice }) {
-  const journey = db.prepare("SELECT * FROM journeys WHERE id = ?").get(journeyId);
-  if (!journey) throw new Error("Journey not found");
+export async function recordAnswer(db, journeyId, { question_id, choice, user_id }) {
+  let journey;
+  if (!journeyId) {
+    const { randomUUID } = await import("crypto");
+    journeyId = randomUUID();
+    db.prepare(
+      "INSERT INTO journeys (id, user_id, status, answers) VALUES (?, ?, 'in_progress', '[]')"
+    ).run(journeyId, user_id || null);
+    journey = db.prepare("SELECT * FROM journeys WHERE id = ?").get(journeyId);
+  } else {
+    journey = db.prepare("SELECT * FROM journeys WHERE id = ?").get(journeyId);
+    if (!journey) throw new Error("Journey not found");
+  }
 
   const question = getQuestion(db, question_id);
   if (!question) throw new Error("Question not found");
@@ -795,6 +808,7 @@ export async function recordAnswer(db, journeyId, { question_id, choice }) {
     );
 
     return {
+      journey_id: journeyId,
       done: true,
       plan,
       enrichment,
@@ -803,6 +817,7 @@ export async function recordAnswer(db, journeyId, { question_id, choice }) {
   }
 
   return {
+    journey_id: journeyId,
     done: false,
     question: pickedQuestionFor(db, decision),
     preliminary,
@@ -827,10 +842,48 @@ export function getJourney(db, id) {
 }
 
 export function listJourneys(db, userId) {
+  // Only show journeys that have at least one answer or are complete —
+  // empty in-progress rows are noise.
   const rows = db
     .prepare(
-      "SELECT id, title, status, created_at, updated_at FROM journeys WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20"
+      `SELECT id, title, status, answers, created_at, updated_at
+       FROM journeys
+       WHERE user_id = ?
+         AND (status = 'complete' OR LENGTH(TRIM(answers)) > 2)
+       ORDER BY updated_at DESC
+       LIMIT 20`
     )
     .all(userId);
-  return rows;
+
+  return rows.map((r) => {
+    let answerCount = 0;
+    let firstChoice = null;
+    try {
+      const arr = JSON.parse(r.answers || "[]");
+      answerCount = arr.length;
+      firstChoice = arr[0]?.choice || null;
+    } catch (e) {
+      // ignore
+    }
+    let displayTitle = r.title;
+    if (!displayTitle && firstChoice) {
+      displayTitle = `${firstChoice} · ${answerCount}/${TARGET_QUESTIONS} answered`;
+    } else if (!displayTitle) {
+      displayTitle = "Untitled";
+    }
+    return {
+      id: r.id,
+      title: displayTitle,
+      status: r.status,
+      answer_count: answerCount,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  });
+}
+
+export function deleteJourney(db, journeyId) {
+  const info = db.prepare("DELETE FROM journeys WHERE id = ?").run(journeyId);
+  db.prepare("DELETE FROM course_deep_dives WHERE journey_id = ?").run(journeyId);
+  return info.changes > 0;
 }

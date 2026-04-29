@@ -43,14 +43,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ user_id: userId }),
     }),
-  answerJourney: (id, question_id, choice) =>
-    request(`/api/journey/${id}/answer`, {
+  answerJourney: (id, question_id, choice, user_id) =>
+    request("/api/journey/answer", {
       method: "POST",
-      body: JSON.stringify({ question_id, choice }),
+      body: JSON.stringify({ journey_id: id, question_id, choice, user_id }),
     }),
   getJourney: (id) => request(`/api/journey/${id}`),
   listJourneys: (userId) =>
     request(`/api/journeys?user_id=${encodeURIComponent(userId)}`),
+  deleteJourney: (id) =>
+    request(`/api/journey/${id}`, { method: "DELETE" }),
   getAtmosphereImages: () => request("/api/journey/atmosphere"),
   getCourseDeepDive: (journeyId, code) =>
     request(`/api/journey/${journeyId}/course/${encodeURIComponent(code)}/deep-dive`),

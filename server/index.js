@@ -8,6 +8,7 @@ import {
   recordAnswer,
   getJourney,
   listJourneys,
+  deleteJourney,
   getAtmosphereImages,
   courseDeepDive,
 } from "./journey.js";
@@ -239,9 +240,30 @@ app.post("/api/journey/start", async (req, res) => {
   }
 });
 
+app.post("/api/journey/answer", async (req, res) => {
+  try {
+    const { journey_id, question_id, choice, user_id } = req.body || {};
+    if (!question_id || !choice) {
+      return res
+        .status(400)
+        .json({ error: "question_id and choice are required" });
+    }
+    const result = await recordAnswer(db, journey_id || null, {
+      question_id,
+      choice,
+      user_id,
+    });
+    res.json(result);
+  } catch (e) {
+    console.error("journey answer:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Backwards-compatible alias for the old URL pattern.
 app.post("/api/journey/:id/answer", async (req, res) => {
   try {
-    const { question_id, choice } = req.body || {};
+    const { question_id, choice, user_id } = req.body || {};
     if (!question_id || !choice) {
       return res
         .status(400)
@@ -250,6 +272,7 @@ app.post("/api/journey/:id/answer", async (req, res) => {
     const result = await recordAnswer(db, req.params.id, {
       question_id,
       choice,
+      user_id,
     });
     res.json(result);
   } catch (e) {
@@ -278,6 +301,12 @@ app.get("/api/journeys", (req, res) => {
   const { user_id } = req.query;
   if (!user_id) return res.status(400).json({ error: "user_id is required" });
   res.json({ journeys: listJourneys(db, user_id) });
+});
+
+app.delete("/api/journey/:id", (req, res) => {
+  const ok = deleteJourney(db, req.params.id);
+  if (!ok) return res.status(404).json({ error: "Journey not found" });
+  res.json({ success: true });
 });
 
 app.listen(PORT, () => {
