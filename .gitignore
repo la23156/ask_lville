@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/chunks.jsonl
+web/dist/
+.DS_Store
+
+# Reference codebase, not part of this project
+ask_alma-main/
