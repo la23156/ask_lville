@@ -241,12 +241,32 @@ function buildRetrievalQuery(answers) {
 }
 
 // ---------- Course deep dive ----------
+const POINT_SCHEMA = {
+  type: "object",
+  properties: {
+    headline: { type: "string" },
+    detail: { type: "string" },
+  },
+  required: ["headline", "detail"],
+  additionalProperties: false,
+};
+
 const DEEP_DIVE_SCHEMA = {
   type: "object",
   properties: {
     personal_fit: { type: "string" },
-    importance: { type: "string" },
-    modern_relevance: { type: "string" },
+    importance_points: {
+      type: "array",
+      items: POINT_SCHEMA,
+      minItems: 3,
+      maxItems: 5,
+    },
+    modern_relevance_points: {
+      type: "array",
+      items: POINT_SCHEMA,
+      minItems: 3,
+      maxItems: 5,
+    },
     discussion_starters: {
       type: "array",
       items: { type: "string" },
@@ -266,39 +286,54 @@ const DEEP_DIVE_SCHEMA = {
         additionalProperties: false,
       },
     },
+    youtube_videos: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          url: { type: "string" },
+          why_watch: { type: "string" },
+        },
+        required: ["title", "url", "why_watch"],
+        additionalProperties: false,
+      },
+    },
   },
   required: [
     "personal_fit",
-    "importance",
-    "modern_relevance",
+    "importance_points",
+    "modern_relevance_points",
     "discussion_starters",
     "paper_callouts",
+    "youtube_videos",
   ],
   additionalProperties: false,
 };
 
 const DEEP_DIVE_SYSTEM = `You are a thoughtful peer-mentor to a Lawrenceville student. Your job is to give them rich, motivating context about a single course on their plan — why it's right for THEM specifically, why it matters as a discipline, and how its topics connect to active scholarship and the world in 2026.
 
-Output JSON with these fields (markdown allowed in the prose fields):
+Output JSON with these fields:
 
-- personal_fit: 2-3 short paragraphs. Tie this course to MULTIPLE specifics of THIS student's survey answers. Be concrete — name the answers and connect them to skills/topics in the course. Avoid empty platitudes.
-- importance: 2-3 short paragraphs on why the course matters intellectually — the habits of mind it builds, what it teaches you to do, and what it sets you up for academically.
-- modern_relevance: 2-3 short paragraphs on how the course's core topics connect to active scholarship, contemporary technology and science, and current events as of 2026. Be concrete — reference specific developments, debates, or applications. Use **bold** sparingly to highlight key terms.
-- discussion_starters: 3-5 thought-provoking open questions a student should walk into the first day of class with. Frame them to provoke real thinking, not factual recall.
-- paper_callouts: pick 3-5 papers from the candidate list that are most relevant. For each, copy the URL EXACTLY from the input, write a 1-line "why_read" tying it to the course topics or this student's interests.
+- personal_fit: 2-3 short paragraphs (markdown). Tie this course to MULTIPLE specifics of THIS student's survey answers — name the answers and connect them to skills/topics in the course. Concrete, peer-mentor tone, no platitudes.
+- importance_points: 3-5 bullet cards. Each has a punchy headline (4-9 words) and a 1-2 sentence detail explaining a habit of mind, skill, or future-readiness this course builds. No paragraph-walls — make each point its own clear takeaway.
+- modern_relevance_points: 3-5 bullet cards connecting course topics to active scholarship, technology, or current events as of 2026. Each: punchy headline + 1-2 sentence detail mentioning a specific development, debate, or application. Use **bold** sparingly for key terms. Avoid generic "AI is changing things" filler — be concrete.
+- discussion_starters: 3-5 thought-provoking open questions to walk into the first day of class with. Frame them to provoke real thinking, not factual recall.
+- paper_callouts: pick 3-5 of the most relevant items from the PAPER candidate list. Copy URL EXACTLY. One-line "why_read" tied to course topics or student's interests.
+- youtube_videos: pick 3-5 of the most SUBSTANTIVE items from the YouTube candidate list (prefer lectures, full tutorials, conference talks, deep-dive explainers — skip short news clips, music videos, or anything obviously under a couple minutes). Copy URL EXACTLY. One-line "why_watch". If fewer than 3 good videos exist in the candidates, return what you can (even an empty array).
 
-Speak as a peer-mentor: warm, direct, intellectually serious. No bullet-fluff, no preachy moralizing.`;
+Speak as a peer-mentor: warm, direct, intellectually serious.`;
 
-async function exaSearchPapers(courseTopic) {
+async function exaSearchSources(courseTopic) {
   const apiKey = process.env.EXA_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey) return { papers: [], videos: [] };
 
   const headers = {
     "Content-Type": "application/json",
     "x-api-key": apiKey,
   };
 
-  const queries = [
+  const paperQueries = [
     {
       query: `${courseTopic} recent research advances`,
       numResults: 5,
@@ -312,16 +347,25 @@ async function exaSearchPapers(courseTopic) {
       contents: { summary: { query: "core contribution and implications" } },
     },
     {
-      query: `${courseTopic} accessible introduction overview`,
-      numResults: 3,
+      query: `${courseTopic} lecture notes textbook open access university edu`,
+      numResults: 5,
       category: "pdf",
-      contents: { summary: { query: "main ideas and applications" } },
+      contents: { summary: { query: "main concepts and applications" } },
     },
   ];
 
-  const all = [];
-  await Promise.all(
-    queries.map(async (q) => {
+  const videoQuery = {
+    query: `${courseTopic} lecture full talk tutorial introduction explained`,
+    numResults: 8,
+    includeDomains: ["youtube.com", "www.youtube.com"],
+    contents: { summary: { query: "topics covered, level, length, and depth" } },
+  };
+
+  const papers = [];
+  const videos = [];
+
+  await Promise.all([
+    ...paperQueries.map(async (q) => {
       try {
         const res = await fetch("https://api.exa.ai/search", {
           method: "POST",
@@ -331,7 +375,7 @@ async function exaSearchPapers(courseTopic) {
         if (!res.ok) return;
         const data = await res.json();
         for (const r of data.results || []) {
-          all.push({
+          papers.push({
             title: r.title,
             url: r.url,
             summary: (r.summary || r.text || "").slice(0, 280),
@@ -339,20 +383,50 @@ async function exaSearchPapers(courseTopic) {
             source: q.includeDomains?.[0] || q.category || "search",
           });
         }
-      } catch (e) {
-        // ignore individual failures
-      }
-    })
-  );
+      } catch (e) {}
+    }),
+    (async () => {
+      try {
+        const res = await fetch("https://api.exa.ai/search", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(videoQuery),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const r of data.results || []) {
+          if (!isYouTubeWatchUrl(r.url)) continue;
+          videos.push({
+            title: r.title,
+            url: r.url,
+            summary: (r.summary || r.text || "").slice(0, 260),
+            published: r.publishedDate,
+          });
+        }
+      } catch (e) {}
+    })(),
+  ]);
 
-  const seen = new Set();
-  return all
-    .filter((p) => {
+  const dedupe = (arr) => {
+    const seen = new Set();
+    return arr.filter((p) => {
       if (!p.url || !p.title || seen.has(p.url)) return false;
       seen.add(p.url);
       return true;
-    })
-    .slice(0, 14);
+    });
+  };
+
+  return {
+    papers: dedupe(papers).slice(0, 16),
+    videos: dedupe(videos).slice(0, 10),
+  };
+}
+
+function isYouTubeWatchUrl(url) {
+  if (!url) return false;
+  return /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/i.test(
+    url
+  );
 }
 
 export async function courseDeepDive(db, journeyId, courseCode) {
@@ -361,7 +435,16 @@ export async function courseDeepDive(db, journeyId, courseCode) {
       "SELECT data FROM course_deep_dives WHERE journey_id = ? AND course_code = ?"
     )
     .get(journeyId, courseCode);
-  if (cached) return JSON.parse(cached.data);
+  if (cached) {
+    const parsed = JSON.parse(cached.data);
+    // Reuse cache only if it has the new schema fields
+    if (
+      Array.isArray(parsed.importance_points) &&
+      Array.isArray(parsed.youtube_videos)
+    ) {
+      return parsed;
+    }
+  }
 
   const journey = getJourney(db, journeyId);
   if (!journey || !journey.plan) throw new Error("Journey or plan not found");
@@ -383,11 +466,13 @@ export async function courseDeepDive(db, journeyId, courseCode) {
 
   const courseTopic = `${foundCourse.code} ${foundCourse.name} ${foundCourse.department}`;
 
-  // Run catalog retrieval and Exa paper search in parallel
-  const [retrieval, papers] = await Promise.all([
+  // Run catalog retrieval, Exa papers, and Exa YouTube in parallel
+  const exaTopic = `${foundCourse.name} ${foundCourse.department}`;
+  const [retrieval, exa] = await Promise.all([
     multiQueryRetrieve(courseTopic),
-    exaSearchPapers(`${foundCourse.name} ${foundCourse.department}`),
+    exaSearchSources(exaTopic),
   ]);
+  const { papers, videos } = exa;
 
   const catalogContext = retrieval.fused
     .filter((c) => c.source === "course_catalog")
@@ -410,13 +495,25 @@ COURSE:
 CATALOG EXCERPTS:
 ${catalogContext}
 
-CANDIDATE PAPERS (you'll pick 3-5 for paper_callouts; copy URLs exactly):
+CANDIDATE PAPERS (pick 3-5 for paper_callouts; copy URLs exactly):
 ${papers
   .map(
     (p, i) =>
-      `[${i + 1}] ${p.title}\n   url: ${p.url}\n   summary: ${p.summary}`
+      `[P${i + 1}] ${p.title}\n   url: ${p.url}\n   summary: ${p.summary}`
   )
   .join("\n\n")}
+
+CANDIDATE YOUTUBE VIDEOS (pick 3-5 SUBSTANTIVE ones for youtube_videos; copy URLs exactly. Skip short clips, music videos, news segments):
+${
+  videos.length === 0
+    ? "(none returned — set youtube_videos to [])"
+    : videos
+        .map(
+          (v, i) =>
+            `[V${i + 1}] ${v.title}\n   url: ${v.url}\n   summary: ${v.summary}`
+        )
+        .join("\n\n")
+}
 
 Generate the deep-dive JSON now.`;
 
@@ -438,7 +535,8 @@ Generate the deep-dive JSON now.`;
   });
 
   const result = JSON.parse(completion.choices[0].message.content);
-  result.papers_all = papers; // keep full candidate set for reference
+  result.papers_all = papers;
+  result.videos_all = videos;
   result.course = foundCourse;
   result.form = foundForm;
 

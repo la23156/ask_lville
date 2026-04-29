@@ -219,16 +219,16 @@ export default function JourneyResult({ journeyId, onRestart }) {
                 </div>
                 <ul className="space-y-1.5 text-xs text-stone-600">
                   <li className="flex items-center gap-2">
-                    <BookOpen className="w-3 h-3 text-lville-red" />
-                    Why this course matters intellectually
+                    <FileText className="w-3 h-3 text-lville-red" />
+                    arXiv + free academic PDFs to dig into
                   </li>
                   <li className="flex items-center gap-2">
                     <Lightbulb className="w-3 h-3 text-lville-red" />
-                    What's happening in this field in 2026
+                    YouTube lectures &amp; deep-dive talks
                   </li>
                   <li className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-lville-red" />
-                    arXiv + research papers to dig into
+                    <BookOpen className="w-3 h-3 text-lville-red" />
+                    Discussion prompts + 2026 field updates
                   </li>
                 </ul>
               </div>
