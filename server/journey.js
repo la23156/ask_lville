@@ -189,7 +189,7 @@ Use the student's survey answers and the catalog excerpts provided to recommend 
 REQUIREMENTS:
 - ONLY recommend courses that appear in the catalog excerpts. Use real course codes and names verbatim.
 - For each Form covered, output 4-7 courses across the year, mixing year-long and trimester offerings, AND meet Lawrenceville's distribution requirements (English, math, science, history, language, arts, athletics).
-- Each course's "reason" must connect specifically to one or more of the student's survey answers (1-2 sentences). Do not give generic justifications.
+- Each course's "reason" must be 2-3 sentences (40-90 words) that tie SPECIFICALLY to MULTIPLE of the student's survey answers — call out at least two of their answers by name (e.g., "Given your interest in X and your stated goal of Y, this course..."). Mention what skills or habits of mind the course will build for them, not just a generic blurb.
 - "edges" should connect course codes that form a sequence (a prereq leading to a follow-on, e.g., MA403 -> MA503). Only include edges where both endpoints appear in your "forms" output.
 - "summary" is a 2-3 sentence narrative of the overall plan and how it serves the student's goals.
 
@@ -238,6 +238,215 @@ Generate the multi-year course plan as JSON.`;
 function buildRetrievalQuery(answers) {
   const parts = answers.map((a) => `${a.text} ${a.choice}`).join(". ");
   return `Lawrenceville course recommendations for a student who: ${parts}`;
+}
+
+// ---------- Course deep dive ----------
+const DEEP_DIVE_SCHEMA = {
+  type: "object",
+  properties: {
+    personal_fit: { type: "string" },
+    importance: { type: "string" },
+    modern_relevance: { type: "string" },
+    discussion_starters: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 3,
+      maxItems: 6,
+    },
+    paper_callouts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          url: { type: "string" },
+          why_read: { type: "string" },
+        },
+        required: ["title", "url", "why_read"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: [
+    "personal_fit",
+    "importance",
+    "modern_relevance",
+    "discussion_starters",
+    "paper_callouts",
+  ],
+  additionalProperties: false,
+};
+
+const DEEP_DIVE_SYSTEM = `You are a thoughtful peer-mentor to a Lawrenceville student. Your job is to give them rich, motivating context about a single course on their plan — why it's right for THEM specifically, why it matters as a discipline, and how its topics connect to active scholarship and the world in 2026.
+
+Output JSON with these fields (markdown allowed in the prose fields):
+
+- personal_fit: 2-3 short paragraphs. Tie this course to MULTIPLE specifics of THIS student's survey answers. Be concrete — name the answers and connect them to skills/topics in the course. Avoid empty platitudes.
+- importance: 2-3 short paragraphs on why the course matters intellectually — the habits of mind it builds, what it teaches you to do, and what it sets you up for academically.
+- modern_relevance: 2-3 short paragraphs on how the course's core topics connect to active scholarship, contemporary technology and science, and current events as of 2026. Be concrete — reference specific developments, debates, or applications. Use **bold** sparingly to highlight key terms.
+- discussion_starters: 3-5 thought-provoking open questions a student should walk into the first day of class with. Frame them to provoke real thinking, not factual recall.
+- paper_callouts: pick 3-5 papers from the candidate list that are most relevant. For each, copy the URL EXACTLY from the input, write a 1-line "why_read" tying it to the course topics or this student's interests.
+
+Speak as a peer-mentor: warm, direct, intellectually serious. No bullet-fluff, no preachy moralizing.`;
+
+async function exaSearchPapers(courseTopic) {
+  const apiKey = process.env.EXA_API_KEY;
+  if (!apiKey) return [];
+
+  const headers = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+  };
+
+  const queries = [
+    {
+      query: `${courseTopic} recent research advances`,
+      numResults: 5,
+      category: "research paper",
+      contents: { summary: { query: "key findings, methods, or arguments" } },
+    },
+    {
+      query: `${courseTopic}`,
+      numResults: 4,
+      includeDomains: ["arxiv.org"],
+      contents: { summary: { query: "core contribution and implications" } },
+    },
+    {
+      query: `${courseTopic} accessible introduction overview`,
+      numResults: 3,
+      category: "pdf",
+      contents: { summary: { query: "main ideas and applications" } },
+    },
+  ];
+
+  const all = [];
+  await Promise.all(
+    queries.map(async (q) => {
+      try {
+        const res = await fetch("https://api.exa.ai/search", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(q),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const r of data.results || []) {
+          all.push({
+            title: r.title,
+            url: r.url,
+            summary: (r.summary || r.text || "").slice(0, 280),
+            published: r.publishedDate,
+            source: q.includeDomains?.[0] || q.category || "search",
+          });
+        }
+      } catch (e) {
+        // ignore individual failures
+      }
+    })
+  );
+
+  const seen = new Set();
+  return all
+    .filter((p) => {
+      if (!p.url || !p.title || seen.has(p.url)) return false;
+      seen.add(p.url);
+      return true;
+    })
+    .slice(0, 14);
+}
+
+export async function courseDeepDive(db, journeyId, courseCode) {
+  const cached = db
+    .prepare(
+      "SELECT data FROM course_deep_dives WHERE journey_id = ? AND course_code = ?"
+    )
+    .get(journeyId, courseCode);
+  if (cached) return JSON.parse(cached.data);
+
+  const journey = getJourney(db, journeyId);
+  if (!journey || !journey.plan) throw new Error("Journey or plan not found");
+
+  let foundCourse = null;
+  let foundForm = null;
+  for (const f of journey.plan.forms) {
+    for (const c of f.courses) {
+      if (c.code === courseCode) {
+        foundCourse = c;
+        foundForm = f.form;
+        break;
+      }
+    }
+    if (foundCourse) break;
+  }
+  if (!foundCourse)
+    throw new Error(`Course ${courseCode} is not in this journey's plan`);
+
+  const courseTopic = `${foundCourse.code} ${foundCourse.name} ${foundCourse.department}`;
+
+  // Run catalog retrieval and Exa paper search in parallel
+  const [retrieval, papers] = await Promise.all([
+    multiQueryRetrieve(courseTopic),
+    exaSearchPapers(`${foundCourse.name} ${foundCourse.department}`),
+  ]);
+
+  const catalogContext = retrieval.fused
+    .filter((c) => c.source === "course_catalog")
+    .slice(0, 4)
+    .map((c) => `[catalog p.${c.page}] ${c.content.slice(0, 1200)}`)
+    .join("\n---\n");
+
+  const userMsg = `STUDENT'S SURVEY ANSWERS:
+${journey.answers
+  .map((a, i) => `${i + 1}. ${a.text} → ${a.choice}`)
+  .join("\n")}
+
+COURSE:
+- Code: ${foundCourse.code}
+- Name: ${foundCourse.name}
+- Department: ${foundCourse.department}
+- Form / Term: ${foundForm} · ${foundCourse.term}
+- Plan rationale: ${foundCourse.reason}
+
+CATALOG EXCERPTS:
+${catalogContext}
+
+CANDIDATE PAPERS (you'll pick 3-5 for paper_callouts; copy URLs exactly):
+${papers
+  .map(
+    (p, i) =>
+      `[${i + 1}] ${p.title}\n   url: ${p.url}\n   summary: ${p.summary}`
+  )
+  .join("\n\n")}
+
+Generate the deep-dive JSON now.`;
+
+  const completion = await openai.chat.completions.create({
+    model: CHAT_MODEL,
+    temperature: 0.4,
+    messages: [
+      { role: "system", content: DEEP_DIVE_SYSTEM },
+      { role: "user", content: userMsg },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "deep_dive",
+        strict: true,
+        schema: DEEP_DIVE_SCHEMA,
+      },
+    },
+  });
+
+  const result = JSON.parse(completion.choices[0].message.content);
+  result.papers_all = papers; // keep full candidate set for reference
+  result.course = foundCourse;
+  result.form = foundForm;
+
+  db.prepare(
+    "INSERT OR REPLACE INTO course_deep_dives (journey_id, course_code, data) VALUES (?, ?, ?)"
+  ).run(journeyId, courseCode, JSON.stringify(result));
+
+  return result;
 }
 
 // ---------- Preliminary plan (during wizard) ----------

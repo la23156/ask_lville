@@ -97,6 +97,14 @@ function migrate(db) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_journeys_user ON journeys(user_id);
+
+    CREATE TABLE IF NOT EXISTS course_deep_dives (
+      journey_id TEXT NOT NULL,
+      course_code TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (journey_id, course_code)
+    );
   `);
 }
 

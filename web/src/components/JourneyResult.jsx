@@ -8,7 +8,8 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { api } from "../services/api.js";
-import { Loader2, ExternalLink, RefreshCw } from "lucide-react";
+import { Loader2, ExternalLink, RefreshCw, BookOpen, FileText, Lightbulb } from "lucide-react";
+import CourseDeepDiveModal from "./CourseDeepDiveModal.jsx";
 
 const FORM_ORDER = ["II Form", "III Form", "IV Form", "V Form", "Post-Graduate"];
 const TERM_ORDER = ["Year-long", "T1", "T2", "T3", "Yearlong", "Year long"];
@@ -118,6 +119,7 @@ export default function JourneyResult({ journeyId, onRestart }) {
   const [journey, setJourney] = useState(null);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState(null);
+  const [deepDiveCourse, setDeepDiveCourse] = useState(null);
 
   useEffect(() => {
     if (!journeyId) return;
@@ -201,15 +203,42 @@ export default function JourneyResult({ journeyId, onRestart }) {
               <h2 className="text-lg font-bold text-stone-900 mt-1">
                 {selected.code}
               </h2>
-              <div className="text-sm text-stone-700 font-medium mb-3">
+              <div className="text-sm text-stone-700 font-medium mb-4">
                 {selected.name}
               </div>
-              <div className="text-xs uppercase tracking-wider font-semibold text-lville-red mb-1">
+              <div className="text-xs uppercase tracking-wider font-semibold text-lville-red mb-1.5">
                 Why this fits you
               </div>
-              <p className="text-sm text-stone-700 leading-relaxed">
+              <p className="text-sm text-stone-700 leading-relaxed mb-5">
                 {selected.reason}
               </p>
+
+              <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 mb-4">
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-stone-500 mb-2">
+                  In a Learn more briefing
+                </div>
+                <ul className="space-y-1.5 text-xs text-stone-600">
+                  <li className="flex items-center gap-2">
+                    <BookOpen className="w-3 h-3 text-lville-red" />
+                    Why this course matters intellectually
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Lightbulb className="w-3 h-3 text-lville-red" />
+                    What's happening in this field in 2026
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-lville-red" />
+                    arXiv + research papers to dig into
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => setDeepDiveCourse(selected)}
+                className="w-full bg-lville-red hover:bg-red-700 text-white py-2 rounded-lg font-medium text-sm transition"
+              >
+                Learn more about {selected.code} →
+              </button>
             </div>
           ) : (
             <div className="p-5 text-sm text-stone-500">
@@ -252,6 +281,15 @@ export default function JourneyResult({ journeyId, onRestart }) {
           )}
         </aside>
       </div>
+
+      {deepDiveCourse && (
+        <CourseDeepDiveModal
+          journeyId={journeyId}
+          course={deepDiveCourse}
+          form={deepDiveCourse.form}
+          onClose={() => setDeepDiveCourse(null)}
+        />
+      )}
     </div>
   );
 }

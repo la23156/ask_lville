@@ -9,6 +9,7 @@ import {
   getJourney,
   listJourneys,
   getAtmosphereImages,
+  courseDeepDive,
 } from "./journey.js";
 
 const app = express();
@@ -261,6 +262,16 @@ app.get("/api/journey/:id", (req, res) => {
   const journey = getJourney(db, req.params.id);
   if (!journey) return res.status(404).json({ error: "Journey not found" });
   res.json(journey);
+});
+
+app.get("/api/journey/:id/course/:code/deep-dive", async (req, res) => {
+  try {
+    const data = await courseDeepDive(db, req.params.id, req.params.code);
+    res.json(data);
+  } catch (e) {
+    console.error("course deep-dive:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get("/api/journeys", (req, res) => {

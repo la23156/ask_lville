@@ -52,4 +52,6 @@ export const api = {
   listJourneys: (userId) =>
     request(`/api/journeys?user_id=${encodeURIComponent(userId)}`),
   getAtmosphereImages: () => request("/api/journey/atmosphere"),
+  getCourseDeepDive: (journeyId, code) =>
+    request(`/api/journey/${journeyId}/course/${encodeURIComponent(code)}/deep-dive`),
 };
