@@ -15,6 +15,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [animateIdx, setAnimateIdx] = useState(-1);
 
   const refreshConversations = useCallback(async () => {
     if (!user) return;
@@ -33,10 +34,12 @@ export default function App() {
   const newChat = () => {
     setActiveId(null);
     setMessages([]);
+    setAnimateIdx(-1);
   };
 
   const selectConversation = async (id) => {
     setActiveId(id);
+    setAnimateIdx(-1);
     try {
       const data = await api.getConversation(id);
       setMessages(
@@ -59,14 +62,16 @@ export default function App() {
         user_id: user.id,
       });
       setActiveId(res.conversation_id);
-      setMessages([
+      const next = [
         ...optimistic,
         {
           role: "assistant",
           content: res.answer,
           sources: res.sources,
         },
-      ]);
+      ];
+      setMessages(next);
+      setAnimateIdx(next.length - 1);
       refreshConversations();
     } catch (e) {
       setMessages([
@@ -133,7 +138,11 @@ export default function App() {
             userName={user?.name}
           />
         ) : (
-          <ChatArea messages={messages} isLoading={isLoading} />
+          <ChatArea
+            messages={messages}
+            isLoading={isLoading}
+            animateIdx={animateIdx}
+          />
         )}
         <ChatInputBar onSend={sendMessage} disabled={isLoading} />
       </main>

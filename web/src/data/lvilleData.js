@@ -13,6 +13,40 @@ export const placeholderOptions = [
   "Ask me about the House system",
 ];
 
+// Prominent starter prompts shown on the empty state.
+export const quickStartQuestions = [
+  {
+    icon: "📚",
+    title: "Explore courses",
+    question: "What are the most popular V Form English electives?",
+  },
+  {
+    icon: "🏛️",
+    title: "Honor Code",
+    question: "What does the Honor Code at Lawrenceville require of me?",
+  },
+  {
+    icon: "🏠",
+    title: "House life",
+    question: "How does the House system work and what are Heads of Houses for?",
+  },
+  {
+    icon: "🎓",
+    title: "Plan a Form",
+    question: "What courses should a III Former typically take?",
+  },
+  {
+    icon: "🎭",
+    title: "Arts & athletics",
+    question: "What arts and athletics commitments are required each term?",
+  },
+  {
+    icon: "🤝",
+    title: "Harkness method",
+    question: "What is the Harkness method and how do I succeed at the table?",
+  },
+];
+
 export const categorizedQuestions = [
   {
     category: "Courses & Curriculum",
