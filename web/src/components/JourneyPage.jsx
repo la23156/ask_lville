@@ -13,6 +13,7 @@ export default function JourneyPage() {
   const [activeId, setActiveId] = useState(routeId || null);
   const [phase, setPhase] = useState(routeId ? "result" : "wizard");
   const [pastJourneys, setPastJourneys] = useState([]);
+  const [wizardKey, setWizardKey] = useState(0);
 
   useEffect(() => {
     if (user) {
@@ -39,6 +40,7 @@ export default function JourneyPage() {
   const restart = () => {
     setActiveId(null);
     setPhase("wizard");
+    setWizardKey((k) => k + 1); // force JourneyWizard to remount and reset
     navigate("/journey", { replace: true });
   };
 
@@ -125,7 +127,11 @@ export default function JourneyPage() {
 
       <main className="flex-1 flex flex-col">
         {phase === "wizard" ? (
-          <JourneyWizard user={user} onComplete={handleComplete} />
+          <JourneyWizard
+            key={wizardKey}
+            user={user}
+            onComplete={handleComplete}
+          />
         ) : (
           <JourneyResult journeyId={activeId} onRestart={restart} />
         )}

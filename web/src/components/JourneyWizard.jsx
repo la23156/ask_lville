@@ -30,7 +30,8 @@ export default function JourneyWizard({ user, onComplete }) {
   }, [user]);
 
   const submit = async () => {
-    if (!selected || !question || !journeyId) return;
+    // journeyId may be null on the first answer — server creates the row.
+    if (!selected || !question) return;
     setSubmitting(true);
     setError(null);
     try {
