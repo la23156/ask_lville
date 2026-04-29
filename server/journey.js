@@ -240,6 +240,145 @@ function buildRetrievalQuery(answers) {
   return `Lawrenceville course recommendations for a student who: ${parts}`;
 }
 
+// ---------- Preliminary plan (during wizard) ----------
+const PRELIM_SCHEMA = {
+  type: "object",
+  properties: {
+    headline: { type: "string" },
+    confidence: { type: "string", enum: ["forming", "emerging", "clear"] },
+    themes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          courses: { type: "array", items: { type: "string" } },
+          why: { type: "string" },
+        },
+        required: ["title", "courses", "why"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["headline", "confidence", "themes"],
+  additionalProperties: false,
+};
+
+const PRELIM_SYSTEM = `You are an academic advisor sketching a PROVISIONAL Lawrenceville course path while the student is still answering a 10-question survey.
+Given the answers so far and excerpts from the course catalog, return:
+- "headline": a one-line direction (e.g. "Humanities-leaning STEM path with strong language work")
+- "confidence": "forming" if 2-4 answers, "emerging" if 5-7, "clear" if 8-10
+- "themes": 2-3 short cards. Each: a title, 2-4 likely course codes from the catalog excerpts, and a 1-sentence "why".
+Use real course codes from the excerpts only. Be brief — this is a sneak preview, not the final plan.`;
+
+export async function generatePreliminaryPlan(db, journey) {
+  const answers = JSON.parse(journey.answers || "[]");
+  if (answers.length < 2) return null;
+
+  try {
+    const retrievalQuery = buildRetrievalQuery(answers);
+    const { fused } = await multiQueryRetrieve(retrievalQuery);
+    const catalogContext = fused
+      .filter((c) => c.source === "course_catalog")
+      .slice(0, 6)
+      .map((c) => `[catalog p.${c.page}] ${c.content.slice(0, 800)}`)
+      .join("\n---\n");
+
+    const userMsg = `ANSWERS SO FAR (${answers.length}/${TARGET_QUESTIONS}):
+${answers.map((a, i) => `${i + 1}. ${a.text} → ${a.choice}`).join("\n")}
+
+CATALOG EXCERPTS:
+${catalogContext}`;
+
+    const completion = await openai.chat.completions.create({
+      model: CHAT_MODEL,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: PRELIM_SYSTEM },
+        { role: "user", content: userMsg },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "prelim", strict: true, schema: PRELIM_SCHEMA },
+      },
+    });
+
+    return JSON.parse(completion.choices[0].message.content);
+  } catch (e) {
+    console.warn("preliminary plan failed:", e.message);
+    return null;
+  }
+}
+
+// ---------- Atmosphere images (Exa-sourced) ----------
+let _atmosphereCache = null;
+let _atmosphereExpiry = 0;
+const ATMOSPHERE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const ATMOSPHERE_QUERIES = [
+  "Lawrenceville School Harkness classroom",
+  "Lawrenceville School campus quad chapel",
+  "Lawrenceville School student life traditions",
+  "Lawrenceville School athletics fields",
+  "Lawrenceville School arts theater music",
+  "Lawrenceville School science labs",
+];
+
+export async function getAtmosphereImages() {
+  if (_atmosphereCache && Date.now() < _atmosphereExpiry) return _atmosphereCache;
+
+  const apiKey = process.env.EXA_API_KEY;
+  if (!apiKey) return [];
+
+  const collected = [];
+  await Promise.all(
+    ATMOSPHERE_QUERIES.map(async (q) => {
+      try {
+        const res = await fetch("https://api.exa.ai/search", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            query: q,
+            numResults: 4,
+            type: "auto",
+            includeDomains: ["lawrenceville.org"],
+            contents: {},
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const r of data.results || []) {
+          if (r.image && /^https?:\/\//.test(r.image)) {
+            collected.push({
+              url: r.image,
+              title: r.title,
+              sourceUrl: r.url,
+              query: q,
+            });
+          }
+        }
+      } catch (e) {
+        // swallow individual query failures
+      }
+    })
+  );
+
+  // Dedupe by URL
+  const seen = new Set();
+  const unique = collected.filter((i) => {
+    if (seen.has(i.url)) return false;
+    seen.add(i.url);
+    return true;
+  });
+
+  _atmosphereCache = unique.slice(0, 12);
+  _atmosphereExpiry = Date.now() + ATMOSPHERE_TTL_MS;
+  return _atmosphereCache;
+}
+
 // ---------- Exa enrichment ----------
 async function exaEnrich(answers, plan) {
   const apiKey = process.env.EXA_API_KEY;
@@ -326,7 +465,12 @@ export async function recordAnswer(db, journeyId, { question_id, choice }) {
   ).run(JSON.stringify(answers), journeyId);
 
   const updated = db.prepare("SELECT * FROM journeys WHERE id = ?").get(journeyId);
-  const decision = await selectNextQuestion(db, updated);
+  const [decision, preliminary] = await Promise.all([
+    selectNextQuestion(db, updated),
+    answers.length >= 2 && answers.length < TARGET_QUESTIONS
+      ? generatePreliminaryPlan(db, updated)
+      : Promise.resolve(null),
+  ]);
 
   if (decision.action === "ready" || answers.length >= TARGET_QUESTIONS) {
     const plan = await generatePlan(db, updated);
@@ -354,6 +498,7 @@ export async function recordAnswer(db, journeyId, { question_id, choice }) {
   return {
     done: false,
     question: pickedQuestionFor(db, decision),
+    preliminary,
     progress: { answered: answers.length, total: TARGET_QUESTIONS },
   };
 }

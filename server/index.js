@@ -8,6 +8,7 @@ import {
   recordAnswer,
   getJourney,
   listJourneys,
+  getAtmosphereImages,
 } from "./journey.js";
 
 const app = express();
@@ -216,6 +217,16 @@ function safeJson(s, fallback) {
 }
 
 // ---------- JOURNEY ----------
+app.get("/api/journey/atmosphere", async (req, res) => {
+  try {
+    const images = await getAtmosphereImages();
+    res.json({ images });
+  } catch (e) {
+    console.error("atmosphere:", e);
+    res.json({ images: [] });
+  }
+});
+
 app.post("/api/journey/start", async (req, res) => {
   try {
     const { user_id } = req.body || {};

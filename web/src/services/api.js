@@ -51,4 +51,5 @@ export const api = {
   getJourney: (id) => request(`/api/journey/${id}`),
   listJourneys: (userId) =>
     request(`/api/journeys?user_id=${encodeURIComponent(userId)}`),
+  getAtmosphereImages: () => request("/api/journey/atmosphere"),
 };
